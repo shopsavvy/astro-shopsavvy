@@ -1,0 +1,42 @@
+{
+  "name": "astro-shopsavvy",
+  "version": "1.0.0",
+  "description": "Astro integration for ShopSavvy product search, price comparison, and deal discovery",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./components/*": "./src/components/*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "astro",
+    "astro-integration",
+    "shopsavvy",
+    "price-comparison",
+    "shopping",
+    "deals",
+    "content-loader",
+    "astro-component"
+  ],
+  "peerDependencies": {
+    "astro": ">=5.0.0"
+  },
+  "dependencies": {
+    "@shopsavvy/sdk": "latest",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "astro": "^5.0.0",
+    "typescript": "^5.0.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shopsavvy/astro-shopsavvy"
+  },
+  "homepage": "https://shopsavvy.com/integrations/astro"
+}

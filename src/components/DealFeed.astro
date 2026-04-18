@@ -1,0 +1,442 @@
+---
+/**
+ * <DealFeed /> — interactive deal feed island (client:visible)
+ *
+ * Renders a hot-deals feed that hydrates when it enters the viewport.
+ * Handles sort toggle (hot / new / top) and category filtering client-side
+ * via fetch to your /api/shopsavvy/deals endpoint.
+ *
+ * Usage:
+ *
+ *   ---
+ *   import DealFeed from 'astro-shopsavvy/components/DealFeed.astro'
+ *   ---
+ *   <DealFeed client:visible apiBase="/api/shopsavvy" limit={20} />
+ *
+ * Requires the catch-all API route at src/pages/api/shopsavvy/[...slug].ts.
+ */
+
+interface Props {
+  /** Base path for the shopsavvy API route. @default "/api/shopsavvy" */
+  apiBase?: string
+  /** Number of deals to load per page. @default 20 */
+  limit?: number
+  /** Initial sort order. @default "hot" */
+  sort?: 'hot' | 'new' | 'top'
+  /** Filter to a single category. */
+  category?: string
+  class?: string
+}
+
+const {
+  apiBase = '/api/shopsavvy',
+  limit = 20,
+  sort = 'hot',
+  category,
+  class: className,
+} = Astro.props
+---
+
+<div
+  class:list={['shopsavvy-deal-feed', className]}
+  data-api-base={apiBase}
+  data-limit={limit}
+  data-sort={sort}
+  data-category={category ?? ''}
+>
+  <div class="shopsavvy-feed-toolbar">
+    <div class="shopsavvy-feed-sort" role="group" aria-label="Sort deals">
+      <button class="shopsavvy-sort-btn shopsavvy-sort-active" data-sort="hot">Hot</button>
+      <button class="shopsavvy-sort-btn" data-sort="new">New</button>
+      <button class="shopsavvy-sort-btn" data-sort="top">Top</button>
+    </div>
+    <span class="shopsavvy-feed-status"></span>
+  </div>
+
+  <ul class="shopsavvy-feed-list" role="list"></ul>
+
+  <div class="shopsavvy-feed-footer">
+    <button class="shopsavvy-load-more" hidden>Load more</button>
+  </div>
+</div>
+
+<template id="shopsavvy-deal-tpl">
+  <li class="shopsavvy-deal-item">
+    <div class="shopsavvy-deal-grade" aria-label="deal grade"></div>
+    <div class="shopsavvy-deal-body">
+      <a class="shopsavvy-deal-image-link" target="_blank" rel="noopener noreferrer nofollow" hidden>
+        <img class="shopsavvy-deal-image" loading="lazy" decoding="async" alt="" />
+      </a>
+      <div class="shopsavvy-deal-info">
+        <p class="shopsavvy-deal-retailer"></p>
+        <a class="shopsavvy-deal-title" target="_blank" rel="noopener noreferrer nofollow"></a>
+        <div class="shopsavvy-deal-pricing">
+          <span class="shopsavvy-deal-price"></span>
+          <span class="shopsavvy-deal-original" hidden></span>
+          <span class="shopsavvy-deal-savings" hidden></span>
+        </div>
+        <p class="shopsavvy-deal-description" hidden></p>
+      </div>
+    </div>
+    <div class="shopsavvy-deal-votes">
+      <span class="shopsavvy-deal-score"></span>
+      <span class="shopsavvy-deal-vote-label">votes</span>
+    </div>
+  </li>
+</template>
+
+<script>
+  type Deal = {
+    path: string
+    title: string
+    subtitle?: string
+    description?: string
+    emoji?: string
+    grade: { letter: string; value: number }
+    pricing: { current: number; original?: number; currency: string }
+    retailer: { name: string }
+    url: string
+    image?: { url: string }
+    votes: { score: number }
+  }
+
+  function formatPrice(price: number, currency: string): string {
+    try {
+      return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(price)
+    } catch {
+      return `${currency} ${price.toFixed(2)}`
+    }
+  }
+
+  function gradeColor(letter: string): string {
+    const map: Record<string, string> = {
+      A: '#16a34a',
+      B: '#65a30d',
+      C: '#ca8a04',
+      D: '#ea580c',
+      F: '#dc2626',
+    }
+    return map[letter.toUpperCase()] ?? '#6b7280'
+  }
+
+  function renderDeal(deal: Deal): HTMLElement {
+    const tpl = document.getElementById('shopsavvy-deal-tpl') as HTMLTemplateElement
+    const item = tpl.content.cloneNode(true) as DocumentFragment
+    const li = item.querySelector('.shopsavvy-deal-item') as HTMLLIElement
+
+    const grade = li.querySelector('.shopsavvy-deal-grade') as HTMLElement
+    grade.textContent = deal.grade.letter
+    grade.style.background = gradeColor(deal.grade.letter)
+    grade.setAttribute('aria-label', `Grade ${deal.grade.letter}`)
+
+    const titleLink = li.querySelector('.shopsavvy-deal-title') as HTMLAnchorElement
+    titleLink.href = deal.url
+    titleLink.textContent = `${deal.emoji ? deal.emoji + ' ' : ''}${deal.title}`
+
+    const retailer = li.querySelector('.shopsavvy-deal-retailer') as HTMLElement
+    retailer.textContent = deal.retailer.name
+
+    const priceEl = li.querySelector('.shopsavvy-deal-price') as HTMLElement
+    priceEl.textContent = formatPrice(deal.pricing.current, deal.pricing.currency)
+
+    if (deal.pricing.original && deal.pricing.original > deal.pricing.current) {
+      const origEl = li.querySelector('.shopsavvy-deal-original') as HTMLElement
+      origEl.textContent = formatPrice(deal.pricing.original, deal.pricing.currency)
+      origEl.hidden = false
+
+      const savingsEl = li.querySelector('.shopsavvy-deal-savings') as HTMLElement
+      const saved = deal.pricing.original - deal.pricing.current
+      savingsEl.textContent = `Save ${formatPrice(saved, deal.pricing.currency)}`
+      savingsEl.hidden = false
+    }
+
+    if (deal.description ?? deal.subtitle) {
+      const desc = li.querySelector('.shopsavvy-deal-description') as HTMLElement
+      desc.textContent = deal.description ?? deal.subtitle ?? ''
+      desc.hidden = false
+    }
+
+    if (deal.image?.url) {
+      const imgLink = li.querySelector('.shopsavvy-deal-image-link') as HTMLAnchorElement
+      imgLink.href = deal.url
+      imgLink.hidden = false
+      const img = li.querySelector('.shopsavvy-deal-image') as HTMLImageElement
+      img.src = deal.image.url
+      img.alt = deal.title
+    }
+
+    const scoreEl = li.querySelector('.shopsavvy-deal-score') as HTMLElement
+    scoreEl.textContent = String(Math.round(deal.votes.score))
+
+    return li
+  }
+
+  document.querySelectorAll<HTMLElement>('.shopsavvy-deal-feed').forEach((feed) => {
+    const apiBase = feed.dataset.apiBase ?? '/api/shopsavvy'
+    const limit = parseInt(feed.dataset.limit ?? '20')
+    let sort = feed.dataset.sort ?? 'hot'
+    const category = feed.dataset.category || undefined
+    let offset = 0
+    let hasMore = false
+    let loading = false
+
+    const list = feed.querySelector<HTMLUListElement>('.shopsavvy-feed-list')!
+    const status = feed.querySelector<HTMLElement>('.shopsavvy-feed-status')!
+    const loadMore = feed.querySelector<HTMLButtonElement>('.shopsavvy-load-more')!
+    const sortBtns = feed.querySelectorAll<HTMLButtonElement>('.shopsavvy-sort-btn')
+
+    async function load(append = false) {
+      if (loading) return
+      loading = true
+      status.textContent = 'Loading…'
+
+      try {
+        const params = new URLSearchParams({ sort, limit: String(limit), offset: String(offset) })
+        if (category) params.set('category', category)
+        const res = await fetch(`${apiBase}/deals?${params}`)
+        const json = await res.json()
+        const deals: Deal[] = json.deals ?? []
+        hasMore = json.pagination?.has_more ?? false
+
+        if (!append) list.innerHTML = ''
+
+        deals.forEach((deal) => {
+          const el = renderDeal(deal)
+          list.appendChild(el)
+        })
+
+        offset += deals.length
+        loadMore.hidden = !hasMore
+        status.textContent = ''
+      } catch (err) {
+        status.textContent = 'Failed to load deals.'
+        console.error('astro-shopsavvy DealFeed:', err)
+      } finally {
+        loading = false
+      }
+    }
+
+    sortBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (btn.dataset.sort === sort) return
+        sort = btn.dataset.sort ?? 'hot'
+        offset = 0
+        sortBtns.forEach((b) => b.classList.remove('shopsavvy-sort-active'))
+        btn.classList.add('shopsavvy-sort-active')
+        load(false)
+      })
+    })
+
+    loadMore.addEventListener('click', () => {
+      load(true)
+    })
+
+    load(false)
+  })
+</script>
+
+<style>
+  .shopsavvy-deal-feed {
+    font-family: inherit;
+  }
+
+  .shopsavvy-feed-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    gap: 0.75rem;
+  }
+
+  .shopsavvy-feed-sort {
+    display: flex;
+    gap: 0.25rem;
+  }
+
+  .shopsavvy-sort-btn {
+    padding: 0.35rem 0.75rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    border: 1px solid #e5e7eb;
+    background: #fff;
+    border-radius: 999px;
+    cursor: pointer;
+    color: #374151;
+    transition: all 0.15s;
+  }
+
+  .shopsavvy-sort-btn:hover {
+    background: #f3f4f6;
+  }
+
+  .shopsavvy-sort-active {
+    background: #111827;
+    color: #fff;
+    border-color: #111827;
+  }
+
+  .shopsavvy-feed-status {
+    font-size: 0.75rem;
+    color: #9ca3af;
+  }
+
+  .shopsavvy-feed-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .shopsavvy-deal-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.875rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: #fff;
+  }
+
+  .shopsavvy-deal-grade {
+    flex-shrink: 0;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .shopsavvy-deal-body {
+    flex: 1;
+    display: flex;
+    gap: 0.75rem;
+    min-width: 0;
+  }
+
+  .shopsavvy-deal-image-link {
+    flex-shrink: 0;
+  }
+
+  .shopsavvy-deal-image {
+    width: 4rem;
+    height: 4rem;
+    object-fit: contain;
+    border-radius: 4px;
+    background: #f9fafb;
+  }
+
+  .shopsavvy-deal-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .shopsavvy-deal-retailer {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #6b7280;
+    margin: 0 0 0.2rem;
+  }
+
+  .shopsavvy-deal-title {
+    display: block;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #111827;
+    text-decoration: none;
+    margin-bottom: 0.35rem;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
+  .shopsavvy-deal-title:hover {
+    text-decoration: underline;
+  }
+
+  .shopsavvy-deal-pricing {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .shopsavvy-deal-price {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #111827;
+  }
+
+  .shopsavvy-deal-original {
+    font-size: 0.8rem;
+    color: #9ca3af;
+    text-decoration: line-through;
+  }
+
+  .shopsavvy-deal-savings {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #16a34a;
+  }
+
+  .shopsavvy-deal-description {
+    font-size: 0.8rem;
+    color: #6b7280;
+    margin: 0.35rem 0 0;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
+  .shopsavvy-deal-votes {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.1rem;
+    min-width: 2.5rem;
+  }
+
+  .shopsavvy-deal-score {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #111827;
+  }
+
+  .shopsavvy-deal-vote-label {
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #9ca3af;
+  }
+
+  .shopsavvy-feed-footer {
+    margin-top: 1rem;
+    text-align: center;
+  }
+
+  .shopsavvy-load-more {
+    padding: 0.5rem 1.5rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    cursor: pointer;
+    color: #374151;
+    transition: background 0.15s;
+  }
+
+  .shopsavvy-load-more:hover {
+    background: #f3f4f6;
+  }
+</style>

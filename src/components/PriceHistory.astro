@@ -1,0 +1,218 @@
+---
+/**
+ * <PriceHistory /> — interactive price history chart island (client:load)
+ *
+ * Renders a line chart of historical prices for a product across one or more
+ * retailers. Hydrates on page load using Chart.js (loaded from CDN or your
+ * own bundle — see `chartJsSrc` prop).
+ *
+ * Usage:
+ *
+ *   ---
+ *   import PriceHistory from 'astro-shopsavvy/components/PriceHistory.astro'
+ *   ---
+ *   <PriceHistory client:load identifier="B09XS7JWHH" days={90} apiBase="/api/shopsavvy" />
+ *
+ * Requires the catch-all API route at src/pages/api/shopsavvy/[...slug].ts.
+ */
+
+interface Props {
+  /** Product identifier (ASIN, UPC, barcode, URL, etc.). */
+  identifier: string
+  /** Number of days of history to display. @default 90 */
+  days?: number
+  /** Base path for the shopsavvy API route. @default "/api/shopsavvy" */
+  apiBase?: string
+  /**
+   * Chart.js script URL. Override to self-host or pin a specific version.
+   * @default "https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"
+   */
+  chartJsSrc?: string
+  /**
+   * Chart height in pixels.
+   * @default 300
+   */
+  height?: number
+  class?: string
+}
+
+const {
+  identifier,
+  days = 90,
+  apiBase = '/api/shopsavvy',
+  chartJsSrc = 'https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js',
+  height = 300,
+  class: className,
+} = Astro.props
+
+const canvasId = `shopsavvy-price-history-${identifier.replace(/[^a-z0-9]/gi, '-')}`
+---
+
+<div
+  class:list={['shopsavvy-price-history', className]}
+  data-identifier={identifier}
+  data-days={days}
+  data-api-base={apiBase}
+  data-canvas-id={canvasId}
+>
+  <canvas
+    id={canvasId}
+    height={height}
+    class="shopsavvy-history-canvas"
+    aria-label={`Price history for product ${identifier}`}
+    role="img"
+  ></canvas>
+  <div class="shopsavvy-history-loading" aria-live="polite">Loading price history…</div>
+  <div class="shopsavvy-history-error" hidden role="alert"></div>
+</div>
+
+<script define:vars={{ chartJsSrc }}>
+  // Load Chart.js if not already present
+  function ensureChartJs(): Promise<void> {
+    if (typeof window !== 'undefined' && (window as any).Chart) return Promise.resolve()
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script')
+      s.src = chartJsSrc
+      s.onload = () => resolve()
+      s.onerror = () => reject(new Error(`Failed to load Chart.js from ${chartJsSrc}`))
+      document.head.appendChild(s)
+    })
+  }
+
+  // Assign a distinct colour to each retailer series
+  const SERIES_COLORS = [
+    '#2563eb', '#dc2626', '#16a34a', '#ca8a04',
+    '#7c3aed', '#0891b2', '#db2777', '#ea580c',
+  ]
+
+  function formatDate(iso: string): string {
+    try {
+      return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    } catch {
+      return iso
+    }
+  }
+
+  document.querySelectorAll<HTMLElement>('.shopsavvy-price-history').forEach(async (container) => {
+    const { identifier, days, apiBase, canvasId } = container.dataset as Record<string, string>
+    const canvas = document.getElementById(canvasId) as HTMLCanvasElement | null
+    const loading = container.querySelector<HTMLElement>('.shopsavvy-history-loading')!
+    const errorEl = container.querySelector<HTMLElement>('.shopsavvy-history-error')!
+
+    try {
+      await ensureChartJs()
+
+      const params = new URLSearchParams({ days: days ?? '90' })
+      const res = await fetch(`${apiBase}/products/${encodeURIComponent(identifier)}/history?${params}`)
+      if (!res.ok) throw new Error(`API error ${res.status}`)
+      const json = await res.json()
+
+      const rawSeries: { retailer: string; price_history: { date: string; price: number }[] }[] =
+        json.data ?? []
+
+      if (!canvas) throw new Error('canvas element not found')
+      if (rawSeries.length === 0) {
+        loading.textContent = 'No price history available.'
+        return
+      }
+
+      // Collect all unique dates across all retailers, sorted ascending
+      const dateSet = new Set<string>()
+      rawSeries.forEach((s) => s.price_history?.forEach((pt) => dateSet.add(pt.date)))
+      const dates = Array.from(dateSet).sort()
+
+      const datasets = rawSeries.map((series, i) => {
+        const priceMap = Object.fromEntries((series.price_history ?? []).map((pt) => [pt.date, pt.price]))
+        return {
+          label: series.retailer,
+          data: dates.map((d) => priceMap[d] ?? null),
+          borderColor: SERIES_COLORS[i % SERIES_COLORS.length],
+          backgroundColor: 'transparent',
+          spanGaps: true,
+          tension: 0.25,
+          pointRadius: 2,
+          pointHoverRadius: 5,
+        }
+      })
+
+      loading.hidden = true
+
+      new (window as any).Chart(canvas, {
+        type: 'line',
+        data: {
+          labels: dates.map(formatDate),
+          datasets,
+        },
+        options: {
+          responsive: true,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { position: 'top' },
+            tooltip: {
+              callbacks: {
+                label(ctx: any) {
+                  if (ctx.parsed.y === null) return null
+                  const currency = 'USD'
+                  try {
+                    return ` ${ctx.dataset.label}: ${new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(ctx.parsed.y)}`
+                  } catch {
+                    return ` ${ctx.dataset.label}: ${ctx.parsed.y}`
+                  }
+                },
+              },
+            },
+          },
+          scales: {
+            y: {
+              ticks: {
+                callback(value: number) {
+                  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value)
+                },
+              },
+            },
+          },
+        },
+      })
+    } catch (err: any) {
+      loading.hidden = true
+      errorEl.textContent = `Could not load price history: ${err.message}`
+      errorEl.hidden = false
+      console.error('astro-shopsavvy PriceHistory:', err)
+    }
+  })
+</script>
+
+<style>
+  .shopsavvy-price-history {
+    font-family: inherit;
+    position: relative;
+  }
+
+  .shopsavvy-history-canvas {
+    width: 100%;
+    max-width: 100%;
+    display: block;
+  }
+
+  .shopsavvy-history-loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.875rem;
+    color: #9ca3af;
+    background: rgba(255, 255, 255, 0.8);
+  }
+
+  .shopsavvy-history-loading[hidden] {
+    display: none;
+  }
+
+  .shopsavvy-history-error {
+    padding: 1rem;
+    color: #dc2626;
+    font-size: 0.875rem;
+    text-align: center;
+  }
+</style>

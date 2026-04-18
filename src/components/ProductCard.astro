@@ -1,0 +1,274 @@
+---
+/**
+ * <ProductCard /> — zero-JS server-rendered product card
+ *
+ * Displays a product image, title, brand, rating, and lowest price with a
+ * link to the best offer. No client-side JavaScript required.
+ *
+ * Usage:
+ *
+ *   ---
+ *   import { getCollection } from 'astro:content'
+ *   import ProductCard from 'astro-shopsavvy/components/ProductCard.astro'
+ *
+ *   const products = await getCollection('products')
+ *   ---
+ *   {products.map(p => <ProductCard product={p.data} />)}
+ */
+
+import type { ProductEntry } from '../types.ts'
+
+interface Props {
+  product: ProductEntry
+  /** Link href for the card. Defaults to the product's best offer URL. */
+  href?: string
+  /** Show the full offer list below the price. @default false */
+  showOffers?: boolean
+  class?: string
+}
+
+const { product, href, showOffers = false, class: className } = Astro.props
+
+const bestOffer = product.offers.find((o) => o.in_stock && o.price === product.lowest_price)
+  ?? product.offers.find((o) => o.in_stock)
+  ?? product.offers[0]
+
+const cardHref = href ?? bestOffer?.url ?? '#'
+
+const image = product.images[0]
+
+function formatPrice(price: number, currency = 'USD'): string {
+  try {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(price)
+  } catch {
+    return `${currency} ${price.toFixed(2)}`
+  }
+}
+---
+
+<article class:list={['shopsavvy-product-card', className]}>
+  {image && (
+    <a href={cardHref} rel="noopener noreferrer" target="_blank" class="shopsavvy-card-image-link">
+      <img
+        src={image}
+        alt={product.title}
+        loading="lazy"
+        decoding="async"
+        class="shopsavvy-card-image"
+      />
+    </a>
+  )}
+
+  <div class="shopsavvy-card-body">
+    {product.brand && (
+      <p class="shopsavvy-card-brand">{product.brand}</p>
+    )}
+
+    <h3 class="shopsavvy-card-title">
+      <a href={cardHref} rel="noopener noreferrer" target="_blank">
+        {product.title_short ?? product.title}
+      </a>
+    </h3>
+
+    {product.rating && (
+      <div class="shopsavvy-card-rating" aria-label={`${product.rating.value} out of 5 stars, ${product.rating.count} reviews`}>
+        <span class="shopsavvy-rating-stars" aria-hidden="true">
+          {'★'.repeat(Math.round(product.rating.value))}{'☆'.repeat(5 - Math.round(product.rating.value))}
+        </span>
+        <span class="shopsavvy-rating-count">({product.rating.count.toLocaleString()})</span>
+      </div>
+    )}
+
+    {bestOffer && (
+      <div class="shopsavvy-card-price">
+        <span class="shopsavvy-price-amount">
+          {formatPrice(bestOffer.price, bestOffer.currency)}
+        </span>
+        {product.offers.length > 1 && (
+          <span class="shopsavvy-price-qualifier">
+            {' '}at {bestOffer.retailer}
+          </span>
+        )}
+      </div>
+    )}
+
+    {product.offers.length > 1 && (
+      <p class="shopsavvy-card-offer-count">
+        {product.offers.length} stores compared
+      </p>
+    )}
+
+    {showOffers && product.offers.length > 0 && (
+      <ul class="shopsavvy-card-offers">
+        {product.offers
+          .filter((o) => o.in_stock)
+          .sort((a, b) => a.price - b.price)
+          .slice(0, 5)
+          .map((offer) => (
+            <li class="shopsavvy-card-offer-item">
+              <a href={offer.url} rel="noopener noreferrer nofollow" target="_blank">
+                <span class="shopsavvy-offer-retailer">{offer.retailer}</span>
+                <span class="shopsavvy-offer-price">{formatPrice(offer.price, offer.currency)}</span>
+              </a>
+            </li>
+          ))}
+      </ul>
+    )}
+
+    <a
+      href={cardHref}
+      rel="noopener noreferrer nofollow"
+      target="_blank"
+      class="shopsavvy-card-cta"
+    >
+      {bestOffer ? `Buy at ${bestOffer.retailer}` : 'View product'}
+    </a>
+  </div>
+</article>
+
+<style>
+  .shopsavvy-product-card {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    font-family: inherit;
+  }
+
+  .shopsavvy-card-image-link {
+    display: block;
+    aspect-ratio: 1;
+    overflow: hidden;
+    background: #f9fafb;
+  }
+
+  .shopsavvy-card-image {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    padding: 1rem;
+    transition: transform 0.2s;
+  }
+
+  .shopsavvy-card-image:hover {
+    transform: scale(1.04);
+  }
+
+  .shopsavvy-card-body {
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    flex: 1;
+  }
+
+  .shopsavvy-card-brand {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #6b7280;
+    margin: 0;
+  }
+
+  .shopsavvy-card-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    line-height: 1.4;
+    margin: 0;
+  }
+
+  .shopsavvy-card-title a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .shopsavvy-card-title a:hover {
+    text-decoration: underline;
+  }
+
+  .shopsavvy-card-rating {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.8rem;
+    color: #6b7280;
+  }
+
+  .shopsavvy-rating-stars {
+    color: #f59e0b;
+    letter-spacing: -0.05em;
+  }
+
+  .shopsavvy-card-price {
+    margin-top: auto;
+    padding-top: 0.5rem;
+  }
+
+  .shopsavvy-price-amount {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #111827;
+  }
+
+  .shopsavvy-price-qualifier {
+    font-size: 0.8rem;
+    color: #6b7280;
+  }
+
+  .shopsavvy-card-offer-count {
+    font-size: 0.75rem;
+    color: #9ca3af;
+    margin: 0;
+  }
+
+  .shopsavvy-card-offers {
+    list-style: none;
+    padding: 0;
+    margin: 0.5rem 0;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  .shopsavvy-card-offer-item a {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.4rem 0.75rem;
+    font-size: 0.8rem;
+    text-decoration: none;
+    color: inherit;
+    border-bottom: 1px solid #f3f4f6;
+  }
+
+  .shopsavvy-card-offer-item:last-child a {
+    border-bottom: none;
+  }
+
+  .shopsavvy-card-offer-item a:hover {
+    background: #f9fafb;
+  }
+
+  .shopsavvy-offer-price {
+    font-weight: 600;
+  }
+
+  .shopsavvy-card-cta {
+    display: block;
+    text-align: center;
+    padding: 0.6rem 1rem;
+    background: #111827;
+    color: #fff;
+    font-size: 0.875rem;
+    font-weight: 600;
+    border-radius: 6px;
+    text-decoration: none;
+    margin-top: 0.75rem;
+    transition: background 0.15s;
+  }
+
+  .shopsavvy-card-cta:hover {
+    background: #374151;
+  }
+</style>

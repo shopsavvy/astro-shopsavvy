@@ -1,0 +1,249 @@
+---
+/**
+ * <PriceComparisonTable /> — server-rendered offer comparison table
+ *
+ * Shows all available offers for a product sorted by price (ascending by
+ * default). No client-side JavaScript required — sorting happens at render.
+ *
+ * Usage:
+ *
+ *   ---
+ *   import PriceComparisonTable from 'astro-shopsavvy/components/PriceComparisonTable.astro'
+ *   import { getEntry } from 'astro:content'
+ *
+ *   const product = await getEntry('products', 'B09XS7JWHH')
+ *   ---
+ *   <PriceComparisonTable product={product.data} />
+ */
+
+import type { ProductEntry } from '../types.ts'
+
+interface Props {
+  product: ProductEntry
+  /** Maximum rows to display. Shows all rows when omitted. */
+  limit?: number
+  /** Show out-of-stock offers as dimmed rows. @default true */
+  showOutOfStock?: boolean
+  class?: string
+}
+
+const { product, limit, showOutOfStock = true, class: className } = Astro.props
+
+const allOffers = [...product.offers].sort((a, b) => {
+  // In-stock first, then ascending price
+  if (a.in_stock !== b.in_stock) return a.in_stock ? -1 : 1
+  return a.price - b.price
+})
+
+const offers = (showOutOfStock ? allOffers : allOffers.filter((o) => o.in_stock)).slice(0, limit)
+
+const inStockCount = product.offers.filter((o) => o.in_stock).length
+
+function formatPrice(price: number, currency = 'USD'): string {
+  try {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(price)
+  } catch {
+    return `${currency} ${price.toFixed(2)}`
+  }
+}
+---
+
+<div class:list={['shopsavvy-price-table-wrapper', className]}>
+  <div class="shopsavvy-price-table-header">
+    <h4 class="shopsavvy-price-table-title">
+      Price Comparison
+      {product.title_short ? ` — ${product.title_short}` : ''}
+    </h4>
+    <p class="shopsavvy-price-table-meta">
+      {inStockCount} store{inStockCount !== 1 ? 's' : ''} in stock
+    </p>
+  </div>
+
+  {offers.length === 0 ? (
+    <p class="shopsavvy-price-table-empty">No offers available.</p>
+  ) : (
+    <table class="shopsavvy-price-table">
+      <thead>
+        <tr>
+          <th scope="col">Retailer</th>
+          <th scope="col">Price</th>
+          <th scope="col">Shipping</th>
+          <th scope="col">Condition</th>
+          <th scope="col"><span class="sr-only">Buy</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        {offers.map((offer, i) => (
+          <tr class:list={{ 'shopsavvy-row-best': i === 0 && offer.in_stock, 'shopsavvy-row-oos': !offer.in_stock }}>
+            <td class="shopsavvy-col-retailer">
+              {i === 0 && offer.in_stock && (
+                <span class="shopsavvy-best-badge">Best</span>
+              )}
+              {offer.retailer}
+            </td>
+            <td class="shopsavvy-col-price">
+              {offer.in_stock
+                ? formatPrice(offer.price, offer.currency)
+                : <span class="shopsavvy-oos-label">Out of stock</span>}
+            </td>
+            <td class="shopsavvy-col-shipping">
+              {offer.shipping ?? '—'}
+            </td>
+            <td class="shopsavvy-col-condition">
+              {offer.condition ?? 'New'}
+            </td>
+            <td class="shopsavvy-col-action">
+              {offer.in_stock && (
+                <a
+                  href={offer.url}
+                  rel="noopener noreferrer nofollow"
+                  target="_blank"
+                  class="shopsavvy-buy-link"
+                >
+                  Buy →
+                </a>
+              )}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )}
+</div>
+
+<style>
+  .shopsavvy-price-table-wrapper {
+    font-family: inherit;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .shopsavvy-price-table-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 0.875rem 1rem;
+    background: #f9fafb;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  .shopsavvy-price-table-title {
+    font-size: 0.9rem;
+    font-weight: 700;
+    margin: 0;
+  }
+
+  .shopsavvy-price-table-meta {
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin: 0;
+  }
+
+  .shopsavvy-price-table-empty {
+    padding: 1.5rem;
+    text-align: center;
+    color: #9ca3af;
+    font-size: 0.875rem;
+    margin: 0;
+  }
+
+  .shopsavvy-price-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+  }
+
+  .shopsavvy-price-table thead tr {
+    background: #f3f4f6;
+  }
+
+  .shopsavvy-price-table th {
+    text-align: left;
+    padding: 0.6rem 1rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #6b7280;
+    white-space: nowrap;
+  }
+
+  .shopsavvy-price-table td {
+    padding: 0.75rem 1rem;
+    border-top: 1px solid #f3f4f6;
+    vertical-align: middle;
+  }
+
+  .shopsavvy-row-best td {
+    background: #f0fdf4;
+  }
+
+  .shopsavvy-row-oos td {
+    opacity: 0.5;
+  }
+
+  .shopsavvy-col-retailer {
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .shopsavvy-best-badge {
+    display: inline-block;
+    padding: 0.1rem 0.4rem;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background: #16a34a;
+    color: #fff;
+    border-radius: 999px;
+  }
+
+  .shopsavvy-col-price {
+    font-weight: 700;
+    color: #111827;
+    white-space: nowrap;
+  }
+
+  .shopsavvy-oos-label {
+    color: #9ca3af;
+    font-weight: 400;
+  }
+
+  .shopsavvy-col-shipping,
+  .shopsavvy-col-condition {
+    color: #6b7280;
+  }
+
+  .shopsavvy-buy-link {
+    display: inline-block;
+    padding: 0.35rem 0.75rem;
+    background: #111827;
+    color: #fff;
+    font-size: 0.8rem;
+    font-weight: 600;
+    border-radius: 5px;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background 0.15s;
+  }
+
+  .shopsavvy-buy-link:hover {
+    background: #374151;
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+</style>
