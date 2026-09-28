@@ -10,7 +10,7 @@ Works with Astro 5+. Zero client-side JavaScript by default; only the `DealFeed`
 ## Installation
 
 ```bash
-npm install astro-shopsavvy @shopsavvy/sdk
+npm install astro-shopsavvy
 ```
 
 Then run `astro add` to register the integration automatically:
@@ -23,18 +23,14 @@ Or add it manually in `astro.config.mjs`:
 
 ```js
 import { defineConfig } from 'astro/config'
-import { shopsavvy } from 'astro-shopsavvy'
+import shopsavvy from 'astro-shopsavvy'
 
 export default defineConfig({
-  integrations: [
-    shopsavvy({
-      apiKey: import.meta.env.SHOPSAVVY_API_KEY,
-    }),
-  ],
+  integrations: [shopsavvy()],
 })
 ```
 
-Set your API key in `.env`:
+(`shopsavvy` is also available as a named export.) `shopsavvy()` accepts `{ apiKey, baseUrl, timeout }`; with no `apiKey` it reads `SHOPSAVVY_API_KEY` from the environment. Set your API key in `.env`:
 
 ```
 SHOPSAVVY_API_KEY=ss_live_your_api_key_here
@@ -44,7 +40,7 @@ Get your API key at [shopsavvy.com/data](https://shopsavvy.com/data).
 
 ## Content Collections (build-time)
 
-Define a collection in `src/content/config.ts` using the `shopsavvyLoader` and the built-in Zod schema:
+Define a collection in `src/content.config.ts` using the `shopsavvyLoader` and the built-in Zod schema:
 
 ```ts
 import { defineCollection } from 'astro:content'
@@ -135,7 +131,7 @@ Props:
 
 ### `<DealFeed />` — client island
 
-Interactive deal feed with hot / new / top sort and load-more pagination. Hydrates when the component enters the viewport (`client:visible`). Fetches deals from your own API route, not directly from ShopSavvy — so your API key stays server-side.
+Interactive deal feed with hot / new / top-of-the-day sort and load-more pagination. Hydrates when the component enters the viewport (`client:visible`). Fetches deals from your own API route, not directly from ShopSavvy — so your API key stays server-side.
 
 ```astro
 ---
@@ -151,7 +147,7 @@ Props:
 |------|------|---------|-------------|
 | `apiBase` | `string` | `/api/shopsavvy` | Base path for your API route |
 | `limit` | `number` | `20` | Deals per page |
-| `sort` | `'hot' \| 'new' \| 'top'` | `'hot'` | Initial sort order |
+| `sort` | `'hot' \| 'new' \| 'top-hour' \| 'top-day' \| 'top-week'` | `'hot'` | Initial sort order |
 | `category` | `string` | — | Filter to a category slug |
 | `class` | `string` | — | Additional CSS class(es) |
 
@@ -198,8 +194,8 @@ The handler reads `context.locals.shopsavvy` (injected by the integration middle
 | `GET /api/shopsavvy/search?q=...&limit=10` | Product search |
 | `GET /api/shopsavvy/products/:id` | Product details |
 | `GET /api/shopsavvy/products/:id/offers` | Current prices across retailers |
-| `GET /api/shopsavvy/products/:id/history?days=90` | Price history |
-| `GET /api/shopsavvy/deals?sort=hot&limit=20&category=electronics` | Deals feed |
+| `GET /api/shopsavvy/products/:id/history?days=90` | Price history (or `?start=YYYY-MM-DD&end=YYYY-MM-DD`) |
+| `GET /api/shopsavvy/deals?sort=hot&limit=20&category=electronics` | Deals feed (`sort`: hot, new, top-hour, top-day, top-week) |
 
 ## Middleware
 
@@ -307,7 +303,7 @@ const product = await getEntry('products', Astro.params.slug)
 Build gift guides using static product grids. Query multiple search terms in the loader and group products by category on the page:
 
 ```ts
-// src/content/config.ts
+// src/content.config.ts
 export const collections = {
   'gift-tech': defineCollection({
     loader: shopsavvyLoader({
@@ -360,7 +356,7 @@ This integration works on every Astro adapter. The middleware and API endpoint h
 |----------|---------|-------|
 | Vercel | `@astrojs/vercel` | Works with both static and SSR output modes |
 | Netlify | `@astrojs/netlify` | Edge and Node.js runtimes both supported |
-| Cloudflare | `@astrojs/cloudflare` | Use `runtime.env.SHOPSAVVY_API_KEY` for env vars |
+| Cloudflare | `@astrojs/cloudflare` | Set `SHOPSAVVY_API_KEY` at build time (Astro inlines `import.meta.env` into the server build) or pass `{ apiKey }` |
 | Node.js | `@astrojs/node` | Set `SHOPSAVVY_API_KEY` in your process environment |
 
 For static-only sites (`output: 'static'`), the middleware and API routes are not available — use the Content Collection loader and build-time data fetching only.

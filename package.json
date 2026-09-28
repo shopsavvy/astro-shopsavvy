@@ -8,8 +8,14 @@
     ".": "./src/index.ts",
     "./components/*": "./src/components/*"
   },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "bash test.sh"
   },
   "keywords": [
     "astro",
@@ -25,8 +31,7 @@
     "astro": ">=5.0.0"
   },
   "dependencies": {
-    "@shopsavvy/sdk": "latest",
-    "zod": "^3.22.0"
+    "@shopsavvy/sdk": "^1.3.0"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
@@ -38,5 +43,6 @@
     "type": "git",
     "url": "https://github.com/shopsavvy/astro-shopsavvy"
   },
-  "homepage": "https://shopsavvy.com/integrations/astro"
+  "homepage": "https://shopsavvy.com/integrations/astro",
+  "author": "ShopSavvy by Monolith Technologies, Inc."
 }
