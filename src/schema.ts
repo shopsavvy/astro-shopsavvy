@@ -15,7 +15,11 @@
  *   }
  */
 
-import { z } from "zod"
+// Astro's own zod (zod 3 in Astro 5, zod 4 in Astro 6+). Content collection schemas
+// must come from the same zod the host Astro uses, or Astro cannot introspect them
+// (Astro 7 fails to generate the collection's JSON schema for a zod 3 object).
+// Only APIs present in both zod 3 and zod 4 are used below.
+import { z } from "astro/zod"
 
 export const ProductOfferSchema = z.object({
   retailer: z.string(),
@@ -45,6 +49,8 @@ export const ProductScoreSchema = z.object({
   value: z.number().optional(),
   features: z.number().optional(),
   reliability: z.number().optional(),
+  /** Per-aspect expert scores keyed by free-form aspect name (0-1 scale). */
+  aspects: z.record(z.string(), z.number()).optional(),
 })
 
 export const DealGradeSchema = z.object({
@@ -81,7 +87,7 @@ export const ShopSavvySchema = z.object({
   slug: z.string().optional(),
   rating: ProductRatingSchema.optional(),
   score: ProductScoreSchema.optional(),
-  attributes: z.record(z.string()).optional(),
+  attributes: z.record(z.string(), z.string()).optional(),
   keywords: z.array(z.string()).optional(),
   offers: z.array(ProductOfferSchema).default([]),
   lowest_price: z.number().optional(),

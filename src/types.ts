@@ -63,6 +63,8 @@ export interface ProductEntry {
     value?: number
     features?: number
     reliability?: number
+    /** Per-aspect expert scores keyed by free-form aspect name (0-1 scale). */
+    aspects?: Record<string, number>
   }
   attributes?: Record<string, string>
   keywords?: string[]
