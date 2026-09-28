@@ -4,7 +4,7 @@
  * Fetches product data from the ShopSavvy API at build time and returns
  * typed entries compatible with Astro Content Collections.
  *
- * Usage in src/content/config.ts:
+ * Usage in src/content.config.ts:
  *
  *   import { defineCollection } from 'astro:content'
  *   import { shopsavvyLoader } from 'astro-shopsavvy'
@@ -120,13 +120,14 @@ async function fetchOffers(
   try {
     const offersResult = await client.getCurrentOffers(id)
     const rawOffers = offersResult?.data?.[0]?.offers ?? []
+    // Data API offer shape: { id, retailer, price, currency, availability: "in" | "out"
+    // (absent when unknown), condition, URL, seller, timestamp }.
     return rawOffers.map((o: any): ProductOffer => ({
-      retailer: o.retailer ?? o.merchant ?? "",
-      price: Number(o.price ?? o.price_current ?? 0),
+      retailer: o.retailer ?? "",
+      price: Number(o.price ?? 0),
       currency: o.currency ?? "USD",
-      url: o.url ?? o.link ?? "",
-      in_stock: o.in_stock !== false,
-      shipping: o.shipping,
+      url: o.URL ?? "",
+      in_stock: o.availability !== "out",
       condition: o.condition,
     }))
   } catch (err: any) {

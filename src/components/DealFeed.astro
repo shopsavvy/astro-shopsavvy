@@ -3,7 +3,7 @@
  * <DealFeed /> — interactive deal feed island (client:visible)
  *
  * Renders a hot-deals feed that hydrates when it enters the viewport.
- * Handles sort toggle (hot / new / top) and category filtering client-side
+ * Handles sort toggle (hot / new / top of the day) and category filtering client-side
  * via fetch to your /api/shopsavvy/deals endpoint.
  *
  * Usage:
@@ -21,8 +21,8 @@ interface Props {
   apiBase?: string
   /** Number of deals to load per page. @default 20 */
   limit?: number
-  /** Initial sort order. @default "hot" */
-  sort?: 'hot' | 'new' | 'top'
+  /** Initial sort order (the Data API's deal sorts). @default "hot" */
+  sort?: 'hot' | 'new' | 'top-hour' | 'top-day' | 'top-week'
   /** Filter to a single category. */
   category?: string
   class?: string
@@ -46,9 +46,9 @@ const {
 >
   <div class="shopsavvy-feed-toolbar">
     <div class="shopsavvy-feed-sort" role="group" aria-label="Sort deals">
-      <button class="shopsavvy-sort-btn shopsavvy-sort-active" data-sort="hot">Hot</button>
-      <button class="shopsavvy-sort-btn" data-sort="new">New</button>
-      <button class="shopsavvy-sort-btn" data-sort="top">Top</button>
+      <button class:list={['shopsavvy-sort-btn', { 'shopsavvy-sort-active': sort === 'hot' }]} data-sort="hot">Hot</button>
+      <button class:list={['shopsavvy-sort-btn', { 'shopsavvy-sort-active': sort === 'new' }]} data-sort="new">New</button>
+      <button class:list={['shopsavvy-sort-btn', { 'shopsavvy-sort-active': sort.startsWith('top') }]} data-sort={sort.startsWith('top') ? sort : 'top-day'}>Top</button>
     </div>
     <span class="shopsavvy-feed-status"></span>
   </div>
