@@ -15,7 +15,12 @@
  * @see https://shopsavvy.com/integrations/astro
  */
 
-export { createShopSavvyIntegration as shopsavvy } from "./integration.ts"
+import { createShopSavvyIntegration } from "./integration.ts"
+
+export { createShopSavvyIntegration as shopsavvy }
+// `astro add astro-shopsavvy` writes `import shopsavvy from "astro-shopsavvy"`,
+// so the integration must also be the default export.
+export default createShopSavvyIntegration
 export { shopsavvyLoader } from "./loaders/products.ts"
 export { ShopSavvySchema, DealSchema } from "./schema.ts"
 export { createClient } from "./client.ts"
