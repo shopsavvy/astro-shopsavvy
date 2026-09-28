@@ -27,6 +27,7 @@ REQUIRED=(
   "src/rss.ts"
   "src/loaders/products.ts"
   "src/endpoints/handlers.ts"
+  "src/price-history-series.ts"
   "src/components/ProductCard.astro"
   "src/components/PriceComparisonTable.astro"
   "src/components/DealFeed.astro"
@@ -143,6 +144,10 @@ if command -v bun &>/dev/null; then
   echo ""
   echo "Running endpoint handler tests (real SDK, local API stand-in)..."
   bun run tests/test-handlers.ts
+
+  echo ""
+  echo "Running price-history chart tests (real SDK, real response shape)..."
+  bun run tests/test-price-history-series.ts
 else
   echo "bun not found — skipping TypeScript and unit tests"
 fi

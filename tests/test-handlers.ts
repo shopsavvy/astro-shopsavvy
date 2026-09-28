@@ -33,7 +33,26 @@ const server = createServer((req, res) => {
     return respond(res, 200, { success: true, deals: [], pagination: { total: 0, has_more: false, limit: 20, offset: 0 } })
   }
   if (url.pathname === "/v1/products/offers/history") {
-    return respond(res, 200, { success: true, data: [{ id: "o1", retailer: "Amazon", history: [{ timestamp: "2026-01-02T00:00:00Z", price: 10 }] }] })
+    // The real shape: one entry per product, each offer carrying its own history (newest first).
+    return respond(res, 200, {
+      success: true,
+      data: [{
+        title: "Sony WH-1000XM5",
+        shopsavvy: "abc123",
+        category: null,
+        offers: [{
+          id: "o1",
+          retailer: "Amazon",
+          price: 10,
+          currency: "USD",
+          seller: null,
+          history: [
+            { timestamp: "2026-01-02T00:00:00Z", price: 10, currency: "USD", availability: "in" },
+            { timestamp: "2026-01-01T00:00:00Z", price: 12, currency: null },
+          ],
+        }],
+      }],
+    })
   }
   if (url.searchParams.get("ids") === "bad") {
     return respond(res, 404, { success: false, error: "Product not found" })
@@ -88,7 +107,9 @@ try {
       JSON.stringify(seen[0].params) === JSON.stringify({ ids: "B09XS7JWHH", start: "2026-01-01", end: "2026-01-31" }),
       "history sends ids/start/end"
     )
-    assert(body.data[0].history[0].timestamp === "2026-01-02T00:00:00Z", "history passes the API's history[] through")
+    assert(body.data[0].shopsavvy === "abc123", "history passes the per-product entries through")
+    assert(body.data[0].offers[0].history[0].timestamp === "2026-01-02T00:00:00Z", "history passes each offer's history[] through")
+    assert(body.data[0].offers[0].history[1].currency === null, "a null-currency point survives the round trip")
   }
   {
     await call("products/B09XS7JWHH/history?days=7")

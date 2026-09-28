@@ -1,6 +1,6 @@
 ---
 /**
- * <DealFeed /> — interactive deal feed island (client:visible)
+ * <DealFeed /> — interactive deal feed (runs a client-side script)
  *
  * Renders a hot-deals feed that hydrates when it enters the viewport.
  * Handles sort toggle (hot / new / top of the day) and category filtering client-side
@@ -11,7 +11,7 @@
  *   ---
  *   import DealFeed from 'astro-shopsavvy/components/DealFeed.astro'
  *   ---
- *   <DealFeed client:visible apiBase="/api/shopsavvy" limit={20} />
+ *   <DealFeed apiBase="/api/shopsavvy" limit={20} />
  *
  * Requires the catch-all API route at src/pages/api/shopsavvy/[...slug].ts.
  */

@@ -5,7 +5,7 @@
 
 Astro integration for the [ShopSavvy Data API](https://shopsavvy.com/data). Fetch live product data, price comparisons, price history, and shopping deals into your Astro site — at build time via Content Collections, on-demand via API endpoints, or in client islands.
 
-Works with Astro 5+. Zero client-side JavaScript by default; only the `DealFeed` and `PriceHistory` components hydrate.
+Works with Astro 5+. Zero client-side JavaScript by default; only the `DealFeed` and `PriceHistory` components ship a client script.
 
 ## Installation
 
@@ -131,14 +131,14 @@ Props:
 
 ### `<DealFeed />` — client island
 
-Interactive deal feed with hot / new / top-of-the-day sort and load-more pagination. Hydrates when the component enters the viewport (`client:visible`). Fetches deals from your own API route, not directly from ShopSavvy — so your API key stays server-side.
+Interactive deal feed with hot / new / top-of-the-day sort and load-more pagination. It is an Astro component with its own client-side script, so it takes no `client:*` directive. Fetches deals from your own API route, not directly from ShopSavvy — so your API key stays server-side.
 
 ```astro
 ---
 import DealFeed from 'astro-shopsavvy/components/DealFeed.astro'
 ---
 
-<DealFeed client:visible apiBase="/api/shopsavvy" limit={20} sort="hot" />
+<DealFeed apiBase="/api/shopsavvy" limit={20} sort="hot" />
 ```
 
 Props:
@@ -153,16 +153,16 @@ Props:
 
 Requires the [API endpoint template](#api-endpoint-template) below.
 
-### `<PriceHistory />` — client island
+### `<PriceHistory />` — interactive chart
 
-Line chart of historical prices across retailers, powered by Chart.js. Hydrates on page load (`client:load`). Chart.js is loaded from CDN by default; override `chartJsSrc` to self-host.
+Line chart of historical prices, one line per retailer offer, powered by Chart.js. It is an Astro component with its own client-side script, so it needs no `client:*` directive (Astro rejects hydration directives on `.astro` components). Chart.js is loaded from CDN by default; override `chartJsSrc` to self-host. Prices are formatted in each offer's own currency.
 
 ```astro
 ---
 import PriceHistory from 'astro-shopsavvy/components/PriceHistory.astro'
 ---
 
-<PriceHistory client:load identifier="B09XS7JWHH" days={90} apiBase="/api/shopsavvy" />
+<PriceHistory identifier="B09XS7JWHH" days={90} apiBase="/api/shopsavvy" />
 ```
 
 Props:
@@ -295,7 +295,7 @@ const product = await getEntry('products', Astro.params.slug)
 
 <ProductCard product={product.data} showOffers />
 <PriceComparisonTable product={product.data} />
-<PriceHistory client:load identifier={product.data.amazon ?? product.id} days={180} />
+<PriceHistory identifier={product.data.amazon ?? product.id} days={180} />
 ```
 
 ### Gift Guide Site
@@ -340,7 +340,7 @@ import DealFeed from 'astro-shopsavvy/components/DealFeed.astro'
 
 <main>
   <h1>Today's Best Deals</h1>
-  <DealFeed client:visible apiBase="/api/shopsavvy" limit={30} sort="hot" />
+  <DealFeed apiBase="/api/shopsavvy" limit={30} sort="hot" />
 </main>
 ```
 

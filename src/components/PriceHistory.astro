@@ -1,6 +1,6 @@
 ---
 /**
- * <PriceHistory /> — interactive price history chart island (client:load)
+ * <PriceHistory /> — interactive price history chart (runs a client-side script)
  *
  * Renders a line chart of historical prices for a product across one or more
  * retailers. Hydrates on page load using Chart.js (loaded from CDN or your
@@ -11,7 +11,7 @@
  *   ---
  *   import PriceHistory from 'astro-shopsavvy/components/PriceHistory.astro'
  *   ---
- *   <PriceHistory client:load identifier="B09XS7JWHH" days={90} apiBase="/api/shopsavvy" />
+ *   <PriceHistory identifier="B09XS7JWHH" days={90} apiBase="/api/shopsavvy" />
  *
  * Requires the catch-all API route at src/pages/api/shopsavvy/[...slug].ts.
  */
@@ -54,6 +54,7 @@ const canvasId = `shopsavvy-price-history-${identifier.replace(/[^a-z0-9]/gi, '-
   data-days={days}
   data-api-base={apiBase}
   data-canvas-id={canvasId}
+  data-chart-js-src={chartJsSrc}
 >
   <canvas
     id={canvasId}
@@ -66,9 +67,15 @@ const canvasId = `shopsavvy-price-history-${identifier.replace(/[^a-z0-9]/gi, '-
   <div class="shopsavvy-history-error" hidden role="alert"></div>
 </div>
 
-<script define:vars={{ chartJsSrc }}>
+<script>
+  // A processed (bundled) script, not `define:vars`: define:vars forces is:inline, which
+  // ships the TypeScript below to the browser untranspiled and fails with a SyntaxError.
+  // Per-instance values (including chartJsSrc) come from the container's data attributes.
+  import type { ProductWithOfferHistory } from '@shopsavvy/sdk'
+  import { priceHistoryChartData } from '../price-history-series'
+
   // Load Chart.js if not already present
-  function ensureChartJs(): Promise<void> {
+  function ensureChartJs(chartJsSrc: string): Promise<void> {
     if (typeof window !== 'undefined' && (window as any).Chart) return Promise.resolve()
     return new Promise((resolve, reject) => {
       const s = document.createElement('script')
@@ -87,62 +94,64 @@ const canvasId = `shopsavvy-price-history-${identifier.replace(/[^a-z0-9]/gi, '-
 
   function formatDate(iso: string): string {
     try {
-      return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
     } catch {
       return iso
     }
   }
 
+  // A null currency means the API recorded none: show the bare number rather than assume USD.
+  function formatPrice(value: number, currency: string | null, maximumFractionDigits?: number): string {
+    if (!currency) return String(value)
+    try {
+      return new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits }).format(value)
+    } catch {
+      return `${value} ${currency}`
+    }
+  }
+
   document.querySelectorAll<HTMLElement>('.shopsavvy-price-history').forEach(async (container) => {
-    const { identifier, days, apiBase, canvasId } = container.dataset as Record<string, string>
+    const { identifier, days, apiBase, canvasId, chartJsSrc } = container.dataset as Record<string, string>
     const canvas = document.getElementById(canvasId) as HTMLCanvasElement | null
     const loading = container.querySelector<HTMLElement>('.shopsavvy-history-loading')!
     const errorEl = container.querySelector<HTMLElement>('.shopsavvy-history-error')!
 
     try {
-      await ensureChartJs()
+      await ensureChartJs(chartJsSrc)
 
       const params = new URLSearchParams({ days: days ?? '90' })
       const res = await fetch(`${apiBase}/products/${encodeURIComponent(identifier)}/history?${params}`)
       if (!res.ok) throw new Error(`API error ${res.status}`)
-      const json = await res.json()
+      const json = await res.json() as { data?: ProductWithOfferHistory[] }
 
-      // Data API shape: data = offers, each { retailer, history: [{ timestamp, price, currency, availability }] }.
-      // Points are bucketed by calendar day (the timestamp's YYYY-MM-DD prefix).
-      const rawSeries: { retailer?: string; history?: { timestamp: string; price: number; currency?: string | null }[] }[] =
-        json.data ?? []
+      // Data API shape: data = one entry per product, each with offers, each offer
+      // carrying history: [{ timestamp, price, currency, availability }] (newest first).
+      const chart = priceHistoryChartData(json.data ?? [])
 
       if (!canvas) throw new Error('canvas element not found')
-      if (rawSeries.length === 0) {
+      if (chart.series.length === 0) {
         loading.textContent = 'No price history available.'
         return
       }
 
-      // Collect all unique dates across all retailers, sorted ascending
-      const dateSet = new Set<string>()
-      rawSeries.forEach((s) => s.history?.forEach((pt) => dateSet.add(pt.timestamp.slice(0, 10))))
-      const dates = Array.from(dateSet).sort()
-
-      const datasets = rawSeries.map((series, i) => {
-        const priceMap = Object.fromEntries((series.history ?? []).map((pt) => [pt.timestamp.slice(0, 10), pt.price]))
-        return {
-          label: series.retailer ?? 'Unknown retailer',
-          data: dates.map((d) => priceMap[d] ?? null),
-          borderColor: SERIES_COLORS[i % SERIES_COLORS.length],
-          backgroundColor: 'transparent',
-          spanGaps: true,
-          tension: 0.25,
-          pointRadius: 2,
-          pointHoverRadius: 5,
-        }
-      })
+      const datasets = chart.series.map((series, i) => ({
+        label: series.label,
+        currency: series.currency,
+        data: series.prices,
+        borderColor: SERIES_COLORS[i % SERIES_COLORS.length],
+        backgroundColor: 'transparent',
+        spanGaps: true,
+        tension: 0.25,
+        pointRadius: 2,
+        pointHoverRadius: 5,
+      }))
 
       loading.hidden = true
 
       new (window as any).Chart(canvas, {
         type: 'line',
         data: {
-          labels: dates.map(formatDate),
+          labels: chart.dates.map(formatDate),
           datasets,
         },
         options: {
@@ -154,12 +163,7 @@ const canvasId = `shopsavvy-price-history-${identifier.replace(/[^a-z0-9]/gi, '-
               callbacks: {
                 label(ctx: any) {
                   if (ctx.parsed.y === null) return null
-                  const currency = 'USD'
-                  try {
-                    return ` ${ctx.dataset.label}: ${new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(ctx.parsed.y)}`
-                  } catch {
-                    return ` ${ctx.dataset.label}: ${ctx.parsed.y}`
-                  }
+                  return ` ${ctx.dataset.label}: ${formatPrice(ctx.parsed.y, ctx.dataset.currency)}`
                 },
               },
             },
@@ -168,7 +172,7 @@ const canvasId = `shopsavvy-price-history-${identifier.replace(/[^a-z0-9]/gi, '-
             y: {
               ticks: {
                 callback(value: number) {
-                  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value)
+                  return formatPrice(value, chart.currency, 0)
                 },
               },
             },
