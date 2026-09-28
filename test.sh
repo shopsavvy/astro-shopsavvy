@@ -20,6 +20,7 @@ REQUIRED=(
   "src/index.ts"
   "src/integration.ts"
   "src/middleware.ts"
+  "src/virtual.d.ts"
   "src/client.ts"
   "src/schema.ts"
   "src/types.ts"
@@ -96,7 +97,7 @@ echo ""
 # ── Key exports check ────────────────────────────────────────────────────────
 
 echo "Checking key exports in src/index.ts..."
-EXPORTS=(shopsavvy shopsavvyLoader ShopSavvySchema createClient handleShopSavvyRequest dealsToRssItems productToRssItem)
+EXPORTS=(shopsavvy "export default" shopsavvyLoader ShopSavvySchema createClient handleShopSavvyRequest dealsToRssItems productToRssItem)
 for export_name in "${EXPORTS[@]}"; do
   if grep -q "$export_name" src/index.ts; then
     echo "  Exported: $export_name"
@@ -114,6 +115,15 @@ if command -v bun &>/dev/null; then
   bun install --silent
 
   echo ""
+  echo "Checking middleware exports onRequest (required by addMiddleware)..."
+  if grep -q "export const onRequest" src/middleware.ts; then
+    echo "  onRequest exported"
+  else
+    echo "  FAIL: src/middleware.ts must export onRequest"
+    exit 1
+  fi
+
+  echo ""
   echo "Running TypeScript type check..."
   if bun run typecheck 2>&1 | grep -E "^src/"; then
     echo "  TypeScript errors found"
@@ -129,6 +139,10 @@ if command -v bun &>/dev/null; then
   echo ""
   echo "Running schema tests..."
   bun run tests/test-schema.ts
+
+  echo ""
+  echo "Running endpoint handler tests (real SDK, local API stand-in)..."
+  bun run tests/test-handlers.ts
 else
   echo "bun not found — skipping TypeScript and unit tests"
 fi
